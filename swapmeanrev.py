@@ -32,4 +32,53 @@ def initialize(context):
     context.previous_prices = None
     context.day = None
 
-    schedule_function(handleData, date_rules.every_day())
+    schedule_function(handler, date_rules.every_day())
+
+# Will be called on every trade event for the securities you specify.
+def handler(context, data):
+  if context.previous_prices == None:
+      context.previous_prices = np.array([data[stock].price for stock in context.stocks])
+      return
+
+  if context.day == None:
+      context.day = data[context.stocks[0]].datetime
+      return
+
+  if data[context.stocks[0]].datetime.day == context.day.day:
+      return
+
+  # calculate and shift change from previous days price
+  current_prices = np.array([data[stock].price for stock in context.stocks])
+
+  pct_change = current_prices / context.previous_prices - 1
+
+  # normalize
+
+  norm_pct = pct_change / LA.norm(pct_change)
+
+  buy_multiplier = 1
+
+  #iterate through the stocks which we are looking at
+    for i in range(len(norm_pct)):
+        stock = context.stocks[i]
+        #calculating how much to buy/sell;
+
+        #selling = rounded value weighted by performance
+        sell_amount = round(-1 * context.portfolio.positions[stock].amount * norm_pct[i] * norm_pct[i])
+        #Buying = max buying ability (based on available funds) weighted
+        buy_amount = buy_multiplier * round((context.portfolio.cash / data[stock].price) * norm_pct[i] * norm_pct[i])
+
+        notional = context.portfolio.positions[stock].amount * data[stock].price
+        #executes the buying and selling only if change is favored in positive or negative
+        if norm_pct[i] > 0 and abs(sell_amount) > 0 and notional > -context.max_notional:
+            if norm_pct[i]**2 > 0.05:
+                order(stock, sell_amount)
+
+        if norm_pct[i] < 0 and buy_amount > 0 and notional < context.max_notional:
+            if abs(norm_pct[i]) > 0.05:
+                order(stock, buy_amount)
+
+
+
+  context.previous_prices = current_prices
+  context.day = data[context.stocks[0]].datetime
