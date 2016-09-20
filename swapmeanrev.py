@@ -34,7 +34,7 @@ def initialize(context):
 
     schedule_function(handler, date_rules.every_day())
 
-# Will be called on every trade event for the securities you specify.
+# Will be called on every trade event for the securities
 def handler(context, data):
   if context.previous_prices == None:
       context.previous_prices = np.array([data[stock].price for stock in context.stocks])
@@ -71,7 +71,7 @@ def handler(context, data):
         notional = context.portfolio.positions[stock].amount * data[stock].price
         #executes the buying and selling only if change is favored in positive or negative
         if norm_pct[i] > 0 and abs(sell_amount) > 0 and notional > -context.max_notional:
-            if norm_pct[i]**2 > 0.05:
+            if abs(norm_pct[i]**2 > 0.05):
                 order(stock, sell_amount)
 
         if norm_pct[i] < 0 and buy_amount > 0 and notional < context.max_notional:
