@@ -68,12 +68,14 @@ def handler(context, data):
         #Buying = max buying ability (based on available funds) weighted
         buy_amount = buy_multiplier * round((context.portfolio.cash / data[stock].price) * norm_pct[i] * norm_pct[i])
 
+	#notional represents leveraged values
         notional = context.portfolio.positions[stock].amount * data[stock].price
-        #executes the buying and selling only if change is favored in positive or negative
+        
+	#executes the buying and selling only if change is favored in positive or negative
         if norm_pct[i] > 0 and abs(sell_amount) > 0 and notional > -context.max_notional:
             if abs(norm_pct[i]**2 > 0.05):
                 order(stock, sell_amount)
-
+		
         if norm_pct[i] < 0 and buy_amount > 0 and notional < context.max_notional:
             if abs(norm_pct[i]) > 0.05:
                 order(stock, buy_amount)
