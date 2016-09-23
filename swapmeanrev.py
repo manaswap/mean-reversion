@@ -34,6 +34,34 @@ def initialize(context):
 
     schedule_function(handler, date_rules.every_day())
 
+def rebalance(context,data):
+
+    # Get any open orders that we may have, to prevent double ordering.
+    open_orders = get_open_orders()
+
+    # Set the allocations to even weights in each portfolio.
+    long_weight = context.long_leverage / (len(context.long_secs) + len(open_orders)/2)
+    short_weight = context.short_leverage / (len(context.short_secs) + len(open_orders)/2)
+
+    # For each security in our universe, order long or short positions according
+    # to our context.long_secs and context.short_secs lists, and sell all previously
+    # held positions not in either list.
+    for stock in data:
+        # Guard against ordering too much of a given security if a previous order
+        # is still unfilled.
+        if stock not in open_orders:
+            if stock in context.long_secs.index:
+                order_target_percent(stock, long_weight)
+            elif stock in context.short_secs.index:
+                order_target_percent(stock, short_weight)
+            else:
+                order_target_percent(stock, 0)
+
+    # Log the long and short orders each week.
+    log.info("This week's longs: "+", ".join([long_.symbol for long_ in context.long_secs.index]))
+    log.info("This week's shorts: "  +", ".join([short_.symbol for short_ in context.short_secs.index]))
+
+
 # Will be called on every trade event for the securities
 def handler(context, data):
   if context.previous_prices == None:
@@ -56,6 +84,12 @@ def handler(context, data):
 
   norm_pct = pct_change / LA.norm(pct_change)
 
+     gains = pct_change * (pct_change > 0)
+     loss = pct_change * (pct_change <= 0)
+
+     norm_gains = gains / LA.norm(gains)
+     norm_loss = loss / LA.norm(loss)
+
   buy_multiplier = 1
 
   #iterate through the stocks which we are looking at
@@ -65,21 +99,43 @@ def handler(context, data):
 
         #selling = rounded value weighted by performance
         sell_amount = round(-1 * context.portfolio.positions[stock].amount * norm_pct[i] * norm_pct[i])
+
+        #working temp
+        rebalance(context.stocks[i], context.portfolios.positions[stock].amount)
+
         #Buying = max buying ability (based on available funds) weighted
         buy_amount = buy_multiplier * round((context.portfolio.cash / data[stock].price) * norm_pct[i] * norm_pct[i])
 
-	#notional represents leveraged values
+        rebalance(context.stocks[i], context.portfolios.positions[stock].amount)
+
         notional = context.portfolio.positions[stock].amount * data[stock].price
-        
-	#executes the buying and selling only if change is favored in positive or negative
+        #executes the buying and selling only if change is favored in positive or negative
         if norm_pct[i] > 0 and abs(sell_amount) > 0 and notional > -context.max_notional:
-            if abs(norm_pct[i]**2 > 0.05):
+            if absnorm_pct[i]**2 > 0.05:
                 order(stock, sell_amount)
-		
+                record_vars(order, sell_amount)
+
         if norm_pct[i] < 0 and buy_amount > 0 and notional < context.max_notional:
             if abs(norm_pct[i]) > 0.05:
                 order(stock, buy_amount)
+                record_vars(order, buy_amount)
 
+def record_vars(context, data):
+
+    # Record and plot the leverage of our portfolio over time. Even in minute
+    # mode, only the end-of-day leverage is plotted.
+    record(leverage = context.account.leverage)
+
+    # We also want to monitor the number of long and short positions
+    # in our portfolio over time. This loop will check our positition sizes
+    # and add the count of longs and shorts to our plot.
+    longs = shorts = 0
+    for position in context.portfolio.positions.itervalues():
+        if position.amount > 0:
+            longs += 1
+        if position.amount < 0:
+            shorts += 1
+    record(long_count=longs, short_count=shorts)
 
 
   context.previous_prices = current_prices
